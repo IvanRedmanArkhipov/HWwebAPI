@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System;
+using Microsoft.Extensions.Logging;
 
 namespace Homework2.Controllers
 {
@@ -8,6 +9,13 @@ namespace Homework2.Controllers
     [ApiController]
     public class AgentsController : ControllerBase
     {
+        private readonly ILogger<AgentsController> _logger;
+        public AgentsController(ILogger<AgentsController> logger)
+        {
+            _logger = logger;
+            _logger.LogDebug(1, "Nlog встроен в AgentsController");
+        }
+
         [HttpPost("register")]
         public IActionResult RegisterAgent([FromBody] AgentInfo agentInfo)
         {

@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using NLog.Web;
 
 namespace Homework2
 {
@@ -13,7 +14,21 @@ namespace Homework2
     {
         public static void Main(string[] args)
         {
-            CreateHostBuilder(args).Build().Run();
+            var logger = NLogBuilder.ConfigureNLog("nlog.config").GetCurrentClassLogger();
+            try
+            {
+                logger.Debug("init main");
+                CreateHostBuilder(args).Build().Run();
+            }
+            catch (Exception exception)
+            {
+                logger.Error(exception, "Stopped program because of exception");
+                throw;
+            }
+            finally
+            {
+                NLog.LogManager.Shutdown();
+            }
         }
 
         public static IHostBuilder CreateHostBuilder(string[] args) =>
@@ -21,6 +36,11 @@ namespace Homework2
                 .ConfigureWebHostDefaults(webBuilder =>
                 {
                     webBuilder.UseStartup<Startup>();
-                });
+                })
+        .ConfigureLogging(logging =>
+{
+                logging.ClearProviders(); // Создание провайдеров логирования
+                logging.SetMinimumLevel(LogLevel.Trace); // Устанавливаем минимальный уровень логирования
+        }).UseNLog(); // Добавляем библиотеку nlog
     }
 }

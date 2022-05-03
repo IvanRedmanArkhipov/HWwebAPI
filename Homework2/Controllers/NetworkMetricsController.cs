@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System;
+using Microsoft.Extensions.Logging;
 
 namespace Homework2.Controllers
 {
@@ -8,6 +9,13 @@ namespace Homework2.Controllers
     [ApiController]
     public class NetworkMetricsController : ControllerBase
     {
+        private readonly ILogger<NetworkMetricsController> _logger;
+        public NetworkMetricsController(ILogger<NetworkMetricsController> logger)
+        {
+            _logger = logger;
+            _logger.LogDebug(1, "Nlog встроен в NetworkMetricsController");
+        }
+
         [HttpGet("agent/{agentId}/from/{fromTime}/to/{toTime}")]
         public IActionResult GetMetricsFromAgent([FromRoute] int agentId, [FromRoute] TimeSpan fromTime, [FromRoute] TimeSpan toTime)
         {
