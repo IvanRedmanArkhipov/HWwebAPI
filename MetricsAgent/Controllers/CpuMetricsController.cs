@@ -1,106 +1,90 @@
-﻿using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
-using System;
+﻿using MetricsAgent.Controllers;
+using System.Collections.Generic;
+using Dapper;
+using System.Linq;
+using System.Data;
 using System.Data.SQLite;
+using System;
 
 namespace MetricsAgent.Controllers
 {
-    [Route("api/[controller]")]
-    [ApiController]
-    public class CpuMetricsController : ControllerBase
+    public class CpuMetricsRepository : CpuMetricsRepository
     {
-        [HttpGet("sql-test")]
-        public IActionResult TryToSqlLite()
-        {
-            string cs = "Data Source=:memory:";
-            string stm = "SELECT SQLITE_VERSION()";
-            using (var con = new SQLiteConnection(cs))
+        // Строка подключения
+        private const string ConnectionString = @"Data Source=metrics.db; Version=3;Pooling=True;Max Pool Size=100;";
+        // Инжектируем соединение с базой данных в наш репозиторий через конструктор
+        public CpuMetricsRepository()
             {
-                con.Open();
-                using var cmd = new SQLiteCommand(stm, con);
-                string version = cmd.ExecuteScalar().ToString();
-                return Ok(version);
+                // Добавляем парсилку типа TimeSpan в качестве подсказки для SQLite
+                SqlMapper.AddTypeHandler(new TimeSpanHandler());
             }
-        }
-
-        [HttpGet("agent/{agentId}/from/{fromTime}/to/{toTime}")]
-        public IActionResult GetMetricsFromAgent([FromRoute] int agentId, [FromRoute] TimeSpan fromTime, [FromRoute] TimeSpan toTime)
+        public void Create(CpuMetric item)
         {
-            return Ok();
-        }
-        [HttpGet("cluster/from/{fromTime}/to/{toTime}")]
-        public IActionResult GetMetricsFromAllCluster([FromRoute] TimeSpan fromTime, [FromRoute] TimeSpan toTime)
-        {
-            return Ok();
-        }
-        [HttpGet("sql-read-write-test")]
-        public IActionResult TryToInsertAndRead()
-        {
-            // Создаём строку подключения в виде базы данных в оперативнойпамяти
-            string connectionString = "Data Source=:memory:";
-            // Создаём соединение с базой данных
-            using (var connection = new SQLiteConnection(connectionString))
+            using (var connection = new SQLiteConnection(ConnectionString))
             {
-                // Открываем соединение
-
-            }
-            connection.Open();
-            // Создаём объект, через который будут выполняться команды к базе данных
-            using (var command = new SQLiteCommand(connection))
-            {
-                // Задаём новый текст команды для выполнения
-                // Удаляем таблицу с метриками, если она есть в базе данных
-                command.CommandText = "DROP TABLE IF EXISTS cpumetrics";
-                // Отправляем запрос в базу данных
-                command.ExecuteNonQuery();
-                // Создаём таблицу с метриками
-                command.CommandText = @"CREATE TABLE cpumetrics(id INTEGER PRIMARY KEY, value INT, time INT)";
-                command.ExecuteNonQuery();
-                // Создаём запрос на вставку данных
-                command.CommandText = "INSERT INTO cpumetrics(value, time) VALUES(10, 1)";
-                command.ExecuteNonQuery();
-                command.CommandText = "INSERT INTO cpumetrics(value, time) VALUES(50, 2)";
-                command.ExecuteNonQuery();
-                command.CommandText = "INSERT INTO cpumetrics(value, time) VALUES(75, 4)";
-                command.ExecuteNonQuery();
-                command.CommandText = "INSERT INTO cpumetrics(value, time) VALUES(90, 5)";
-                command.ExecuteNonQuery();
-                // Создаём строку для выборки данных из базы
-                // LIMIT 3 обозначает, что мы достанем только 3 записи
-                string readQuery = "SELECT * FROM cpumetrics LIMIT 3";
-                // Создаём массив, в который запишем объекты с данными из базы данных
-                var returnArray = new CpuMetric[3];
-                // Изменяем текст команды на наш запрос чтения
-                command.CommandText = readQuery;
-                // Создаём читалку из базы данных
-                using (SQLiteDataReader reader = command.ExecuteReader())
+                // Запрос на вставку данных с плейсхолдерами для параметров
+                connection.Execute("INSERT INTO cpumetrics(value, time) VALUES(@value, @time)",
+                // Анонимный объект с параметрами запроса
+                new
                 {
-                    // Счётчик, чтобы записать объект в правильное место в массиве
-                    var counter = 0;
-                    // Цикл будет выполняться до тех пор, пока есть что читать из базы данных
-                    while (reader.Read())
-                    {
-                        // Создаём объект и записываем его в массив
-                        returnArray[counter] = new CpuMetric
-                        {
-                            Id = reader.GetInt32(0), // Читаем данные, полученные из базы данных
-                            Value = reader.GetInt32(1), // преобразуя к целочисленному типу
-                            Time = reader.GetInt64(2)
-                        };
-                        // Увеличиваем значение счётчика
-                        counter++;
-                    }
-                }
-                // Оборачиваем массив с данными в объект ответа и возвращаем пользователю
-                return Ok(returnArray);
+                // Value подставится на место "@value" в строке запроса
+                // Значение запишется из поля Value объекта item
+                value = item.Value,
+                // Записываем в поле time количество секунд
+                time = item.Time.TotalSeconds
+                });
             }
         }
-    }
-    public class CpuMetric
-    {
-        public int Id { get; set; }
-        public int Value { get; set; }
-        public long Time { get; set; }
+        public void Delete(int id)
+        {
+            using (var connection = new SQLiteConnection(ConnectionString))
+            {
+                connection.Execute("DELETE FROM cpumetrics WHERE id=@id",
+                new
+                {
+                    id = id
+                });
+            }
+        }
+        public void Update(CpuMetric item)
+        {
+            using (var connection = new SQLiteConnection(ConnectionString))
+            {
+                connection.Execute("UPDATE cpumetrics SET value = @value, time = @time WHERE id=@id",
+                new
+                {
+                    value = item.Value,
+                    time = item.Time.TotalSeconds,
+                    id = item.Id
+                });
+            }
+        }
+        public IList<CpuMetric> GetAll()
+        {
+            using (var connection = new SQLiteConnection(ConnectionString))
+            {
+                // Читаем, используя Query, и в шаблон подставляем тип данных,
+                // объект которого Dapper, он сам заполнит его поля
+                // в соответствии с названиями колонок
+                return connection.Query<CpuMetric>("SELECT Id, Time, Value FROM cpumetrics").ToList();
+            }
+        }
+        public CpuMetric GetById(int id)
+        {
+            using (var connection = new SQLiteConnection(ConnectionString))
+            {
+                return connection.QuerySingle<CpuMetric>("SELECT Id, Time, Value FROM cpumetrics WHERE id = @id",
+                new { id = id });
+            }
+        }
+        public class TimeSpanHandler : SqlMapper.TypeHandler<TimeSpan>
+        {
+            public override TimeSpan Parse(object value) => TimeSpan.FromSeconds((long)value);
+            public override void SetValue(IDbDataParameter parameter, TimeSpan
+            value)
+            => parameter.Value = value;
+        }
     }
 }
+
 

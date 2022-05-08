@@ -13,7 +13,7 @@ namespace Homework2.Controllers
         public AgentsController(ILogger<AgentsController> logger)
         {
             _logger = logger;
-            _logger.LogDebug(1, "Nlog встроен в AgentsController");
+            _logger.LogDebug(1, "Nlog встроен в AgenController");
         }
 
         [HttpPost("register")]
@@ -39,5 +39,4 @@ namespace Homework2.Controllers
         public int AgentId { get; }
         public Uri AgentAddress { get; }
     }
-
 }
